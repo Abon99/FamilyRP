@@ -29,6 +29,7 @@ export default function Calendar({ user, session }) {
   useEffect(() => { loadEntries() }, [session])
 
   async function loadEntries() {
+  
     setLoading(true)
     const { data, error } = await supabase
   .from('calendar_entries')
