@@ -16,7 +16,7 @@ import ComingSoon from './pages/ComingSoon'
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [appState, setAppState] = useState('checking') // checking | login | onboarding | picker | app
+  const [appState, setAppState] = useState('checking')
   const [currentSession, setCurrentSession] = useState(null)
   const [userRole, setUserRole] = useState('member')
   const [activeTab, setActiveTab] = useState('calendar')
@@ -24,30 +24,24 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      if (session) {
-        checkUserSessions(session.user)
-      } else {
-        setAppState('login')
-      }
-      setLoading(false)
+      if (session) checkUserSessions(session.user)
+      else { setAppState('login'); setLoading(false) }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      if (session) {
-        checkUserSessions(session.user)
-      } else {
-        setAppState('login')
-        setCurrentSession(null)
-      }
+      if (session) checkUserSessions(session.user)
+      else { setAppState('login'); setCurrentSession(null) }
     })
     return () => subscription.unsubscribe()
   }, [])
 
   async function checkUserSessions(user) {
+    setLoading(true)
     const { data } = await supabase
       .from('session_members')
       .select('session_id, role, sessions(id, name, mode, invite_code)')
       .eq('user_id', user.id)
+
     if (!data || data.length === 0) {
       setAppState('onboarding')
     } else if (data.length === 1) {
@@ -57,11 +51,19 @@ export default function App() {
     } else {
       setAppState('picker')
     }
+    setLoading(false)
   }
 
-  function selectSession(sess, role) {
+  // Called when user picks a session from the dropdown or picker
+  function handleSessionSelect(sess, role) {
+    if (!sess) {
+      // null = create/join new session
+      setAppState('onboarding')
+      return
+    }
     setCurrentSession(sess)
-    setUserRole(role)
+    setUserRole(role || 'member')
+    setActiveTab('calendar') // reset to calendar on session switch
     setAppState('app')
   }
 
@@ -87,7 +89,7 @@ export default function App() {
   if (appState === 'picker') return (
     <SessionPicker
       user={session.user}
-      onSelect={selectSession}
+      onSelect={handleSessionSelect}
       onCreateNew={() => setAppState('onboarding')}
     />
   )
@@ -99,7 +101,7 @@ export default function App() {
       userRole={userRole}
       activeTab={activeTab}
       setActiveTab={setActiveTab}
-      onSwitchSession={() => setAppState('picker')}
+      onSwitchSession={handleSessionSelect}
     >
       {renderTab()}
     </Layout>

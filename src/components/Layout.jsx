@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { getUserSessions } from '../lib/session'
 
 const TABS = [
   { id: 'calendar',  label: 'Calendar',  icon: '📅' },
@@ -14,44 +15,156 @@ const TABS = [
 
 const MODE_COLORS = { family: '#FAEEDA', group: '#EAF3DE', team: '#E6F1FB' }
 const MODE_TEXT   = { family: '#633806', group: '#27500A', team: '#0C447C' }
+const MODE_ICONS  = { family: '👨‍👩‍👧‍👦', group: '👥', team: '💼' }
 
 export default function Layout({ user, session, userRole, activeTab, setActiveTab, onSwitchSession, children }) {
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
+  const [allSessions, setAllSessions] = useState([])
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const sessionMenuRef = useRef(null)
+  const userMenuRef = useRef(null)
+
+  useEffect(() => {
+    loadAllSessions()
+  }, [user])
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (sessionMenuRef.current && !sessionMenuRef.current.contains(e.target)) {
+        setSessionMenuOpen(false)
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  async function loadAllSessions() {
+    try {
+      const data = await getUserSessions(user.id)
+      setAllSessions(data)
+    } catch (e) {
+      console.error('Error loading sessions:', e)
+    }
+  }
 
   async function handleSignOut() {
     await supabase.auth.signOut()
+  }
+
+  function handleSessionSwitch(sess, role) {
+    setSessionMenuOpen(false)
+    onSwitchSession(sess, role)
   }
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", minHeight: '100vh', background: '#f8f8f6' }}>
 
       {/* Top bar */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e4', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 20 }}>🏠</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#2c2c2a', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            {session?.name}
-            <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 8, background: MODE_COLORS[session?.mode] || '#f0f0ee', color: MODE_TEXT[session?.mode] || '#888780', fontWeight: 500, textTransform: 'capitalize' }}>
-              {session?.mode}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e4', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+
+        {/* App icon */}
+        <span style={{ fontSize: 20, flexShrink: 0 }}>🏠</span>
+
+        {/* Session switcher */}
+        <div ref={sessionMenuRef} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+          <button
+            onClick={() => setSessionMenuOpen(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px', borderRadius: 8, border: '1px solid #e8e8e4', background: sessionMenuOpen ? '#f0f8ff' : '#f8f8f6', cursor: 'pointer', maxWidth: '100%' }}>
+            <span style={{ fontSize: 14 }}>{MODE_ICONS[session?.mode] || '🏠'}</span>
+            <div style={{ textAlign: 'left', minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#2c2c2a', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 160 }}>
+                {session?.name}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 6, background: MODE_COLORS[session?.mode] || '#f0f0ee', color: MODE_TEXT[session?.mode] || '#888780', fontWeight: 500, textTransform: 'capitalize' }}>
+                  {session?.mode}
+                </span>
+                {userRole === 'admin' && (
+                  <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 6, background: '#FCEBEB', color: '#A32D2D', fontWeight: 500 }}>Admin</span>
+                )}
+              </div>
+            </div>
+            <span style={{ fontSize: 10, color: '#888780', marginLeft: 2 }}>
+              {sessionMenuOpen ? '▲' : '▼'}
             </span>
-            {userRole === 'admin' && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 8, background: '#FCEBEB', color: '#A32D2D', fontWeight: 500 }}>Admin</span>}
-          </div>
-          <div style={{ fontSize: 11, color: '#888780' }}>{user?.email}</div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {session?.invite_code && (
-            <div style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: '#f0f0ee', color: '#888780', fontFamily: 'monospace', cursor: 'pointer' }}
-              onClick={() => { navigator.clipboard?.writeText(session.invite_code); alert('Invite code copied: ' + session.invite_code) }}
-              title="Click to copy invite code">
-              📋 {session.invite_code}
+          </button>
+
+          {/* Session dropdown */}
+          {sessionMenuOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 260, background: '#fff', border: '1px solid #e8e8e4', borderRadius: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden' }}>
+              
+              <div style={{ padding: '8px 12px 4px', fontSize: 11, color: '#888780', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                Your sessions
+              </div>
+
+              {allSessions.map(s => {
+                const isActive = s.sessions?.id === session?.id
+                return (
+                  <div key={s.session_id}
+                    onClick={() => !isActive && handleSessionSwitch(s.sessions, s.role)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: isActive ? 'default' : 'pointer', background: isActive ? '#f0f8ff' : 'none', borderLeft: isActive ? '3px solid #378ADD' : '3px solid transparent' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: MODE_COLORS[s.sessions?.mode] || '#f0f0ee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                      {MODE_ICONS[s.sessions?.mode] || '🏠'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: isActive ? 500 : 400, color: '#2c2c2a', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                        {s.sessions?.name}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                        <span style={{ fontSize: 10, color: '#888780', textTransform: 'capitalize' }}>{s.sessions?.mode}</span>
+                        <span style={{ fontSize: 10, color: '#888780' }}>·</span>
+                        <span style={{ fontSize: 10, color: s.role === 'admin' ? '#A32D2D' : '#888780' }}>{s.role}</span>
+                      </div>
+                    </div>
+                    {isActive && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: '#E6F1FB', color: '#0C447C', fontWeight: 500 }}>Active</span>}
+                  </div>
+                )
+              })}
+
+              <div style={{ borderTop: '1px solid #e8e8e4', padding: '6px 8px' }}>
+                <button
+                  onClick={() => { setSessionMenuOpen(false); onSwitchSession(null, null) }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#378ADD', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>➕</span> Create or join another session
+                </button>
+              </div>
             </div>
           )}
-          <button onClick={onSwitchSession} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #d0d0cc', background: 'none', cursor: 'pointer', color: '#888780' }}>
-            Switch
+        </div>
+
+        {/* Invite code pill */}
+        {session?.invite_code && (
+          <div
+            onClick={() => { navigator.clipboard?.writeText(session.invite_code); alert('Invite code copied: ' + session.invite_code) }}
+            style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: '#f0f0ee', color: '#888780', fontFamily: 'monospace', cursor: 'pointer', flexShrink: 0, border: '1px solid #e8e8e4', whiteSpace: 'nowrap' }}
+            title="Click to copy invite code">
+            📋 {session.invite_code}
+          </div>
+        )}
+
+        {/* User menu */}
+        <div ref={userMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            onClick={() => setUserMenuOpen(v => !v)}
+            style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #e8e8e4', background: '#E6F1FB', color: '#0C447C', cursor: 'pointer', fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {user?.email?.slice(0, 2).toUpperCase()}
           </button>
-          <button onClick={handleSignOut} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #d0d0cc', background: 'none', cursor: 'pointer', color: '#888780' }}>
-            Sign out
-          </button>
+
+          {userMenuOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, background: '#fff', border: '1px solid #e8e8e4', borderRadius: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #e8e8e4' }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: '#2c2c2a', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{user?.email}</div>
+                <div style={{ fontSize: 11, color: '#888780', marginTop: 1 }}>Signed in</div>
+              </div>
+              <button onClick={handleSignOut}
+                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#A32D2D', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🚪</span> Sign out
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -65,6 +178,15 @@ export default function Layout({ user, session, userRole, activeTab, setActiveTa
             {tab.label}
           </button>
         ))}
+      </div>
+
+      {/* Session isolation notice — subtle reminder of which session is active */}
+      <div style={{ background: '#f8f8f6', borderBottom: '1px solid #f0f0ee', padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 10, color: '#b0b0ac' }}>Viewing:</span>
+        <span style={{ fontSize: 11, fontWeight: 500, color: MODE_TEXT[session?.mode] || '#888780', background: MODE_COLORS[session?.mode] || '#f0f0ee', padding: '1px 7px', borderRadius: 6 }}>
+          {MODE_ICONS[session?.mode]} {session?.name}
+        </span>
+        <span style={{ fontSize: 10, color: '#b0b0ac', marginLeft: 'auto' }}>🔒 Isolated session</span>
       </div>
 
       {/* Content */}
