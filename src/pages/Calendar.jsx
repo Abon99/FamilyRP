@@ -18,6 +18,7 @@ export default function Calendar({ user, session }) {
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [filterMember, setFilterMember] = useState('all')
+  const [members, setMembers] = useState([])
   const [form, setForm] = useState({
     title: '', entry_type: 'event', entry_date: fmtDate(new Date()),
     entry_time: '09:00', notes: '', members: []

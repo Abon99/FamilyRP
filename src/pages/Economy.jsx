@@ -15,7 +15,7 @@ export default function Economy({ user, session }) {
     setLoading(true)
     const [{ data: r }, { data: m }] = await Promise.all([
       supabase.from('receipts').select('*').eq('session_id', session.id).order('created_at', { ascending: false }),
-      supabase.from('session_members').select('user_id, role, users(id, display_name, email)').eq('session_id', session.id)
+      supabase.from('session_members').select('user_id, role, users!inner(id, display_name, email)').eq('session_id', session.id)
     ])
     setReceipts(r || [])
     setMembers(m || [])
@@ -55,7 +55,7 @@ export default function Economy({ user, session }) {
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
-        {[['Open receipts', open.length], ['Outstanding', '£' + totalOpen.toFixed(2)], ['Settled', settled.length]].map(([l, v]) => (
+        {[['Open receipts', open.length], ['Outstanding', '$' + totalOpen.toFixed(2)], ['Settled', settled.length]].map(([l, v]) => (
           <div key={l} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e8e8e4', padding: 12 }}>
             <div style={{ fontSize: 11, color: '#888780', marginBottom: 4 }}>{l}</div>
             <div style={{ fontSize: 20, fontWeight: 500, color: '#2c2c2a' }}>{v}</div>
@@ -81,7 +81,7 @@ export default function Economy({ user, session }) {
                 {r.owed_by ? ` · Owed by ${getMemberName(r.owed_by)}` : ''}
               </div>
             </div>
-            <div style={{ fontSize: 15, fontWeight: 500, color: '#2c2c2a' }}>£{Number(r.total_amount).toFixed(2)}</div>
+            <div style={{ fontSize: 15, fontWeight: 500, color: '#2c2c2a' }}>${Number(r.total_amount).toFixed(2)}</div>
             <button onClick={() => toggleSettled(r.id, r.settled)}
               style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: 'none', background: r.settled ? '#f0f0ee' : '#EAF3DE', color: r.settled ? '#888780' : '#27500A', cursor: 'pointer' }}>
               {r.settled ? 'Settled' : 'Mark settled'}
@@ -97,7 +97,7 @@ export default function Economy({ user, session }) {
             <h3 style={{ fontSize: 15, fontWeight: 500, marginBottom: 16, color: '#2c2c2a' }}>Add receipt</h3>
             {[
               { label: 'Store / supplier', key: 'store_name', type: 'text', placeholder: 'e.g. Tesco' },
-              { label: 'Amount (£)', key: 'total_amount', type: 'number', placeholder: '0.00' },
+              { label: 'Amount ($)', key: 'total_amount', type: 'number', placeholder: '0.00' },
               { label: 'Date', key: 'receipt_date', type: 'date' },
             ].map(f => (
               <div key={f.key} style={{ marginBottom: 10 }}>
