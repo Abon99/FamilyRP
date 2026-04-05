@@ -26,7 +26,7 @@ export default function Calendar({ user, session }) {
 
   const today = new Date()
 
-  useEffect(() => { loadEntries() }, [])
+  useEffect(() => { loadEntries() }, [session])
 
   async function loadEntries() {
     setLoading(true)

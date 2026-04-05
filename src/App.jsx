@@ -70,12 +70,12 @@ export default function App() {
   function renderTab() {
     const props = { user: session?.user, session: currentSession, userRole }
     switch (activeTab) {
-      case 'calendar':   return <Calendar {...props} />
-      case 'economy':    return <Economy {...props} />
-      case 'projects':   return <Projects {...props} />
-      case 'messages':   return <Messages {...props} />
-      case 'documents':  return <Documents {...props} />
-      case 'reports':    return <Reports {...props} />
+      case 'calendar':   return <Calendar key={currentSession?.id} {...props} />
+      case 'economy':    return <Economy key={currentSession?.id} {...props} />
+      case 'projects':   return <Projects key={currentSession?.id} {...props} />
+      case 'messages':   return <Messages key={currentSession?.id} {...props} />
+      case 'documents':  return <Documents key={currentSession?.id} {...props} />
+      case 'reports':    return <Reports key={currentSession?.id} {...props} />
       case 'offers':     return <Offers {...props} />
       default:           return <ComingSoon name={activeTab} />
     }
