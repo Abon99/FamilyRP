@@ -31,9 +31,10 @@ export default function Calendar({ user, session }) {
   async function loadEntries() {
     setLoading(true)
     const { data, error } = await supabase
-      .from('calendar_entries')
-      .select(`*, calendar_entry_members(user_id)`)
-      .order('entry_date', { ascending: true })
+  .from('calendar_entries')
+  .select('*')
+  .eq('session_id', session.id)
+  .order('entry_date', { ascending: true })
     if (error) {
       console.error('Error loading entries:', error)
     } else {
