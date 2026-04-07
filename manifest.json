@@ -1,0 +1,26 @@
+{
+  "name": "Family App",
+  "short_name": "FamilyApp",
+  "description": "Your family organiser — calendar, economy, messages and more",
+  "start_url": "/FamilyRP/",
+  "scope": "/FamilyRP/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8f8f6",
+  "theme_color": "#378ADD",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/FamilyRP/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/FamilyRP/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
