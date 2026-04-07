@@ -20,12 +20,20 @@ export default function Messages({ user, session }) {
   const [sending, setSending] = useState(false)
   const [attachFile, setAttachFile] = useState(null)
   const [attachPreview, setAttachPreview] = useState(null)
-  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null) // { type: 'doc'|'message', payload }
+  const [activeMenu, setActiveMenu] = useState(null) // message id with menu open
   const bottomRef = useRef(null)
   const fileRef = useRef(null)
 
   useEffect(() => { loadData() }, [session])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  // Close menu on outside click
+  useEffect(() => {
+    function handleClick() { setActiveMenu(null) }
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
 
   async function loadData() {
     setLoading(true)
@@ -45,7 +53,6 @@ export default function Messages({ user, session }) {
     ])
     setMessages(m || [])
     setMembers(mb || [])
-
     const grouped = {}
     ;(d || []).forEach(doc => {
       if (!grouped[doc.message_id]) grouped[doc.message_id] = []
@@ -124,8 +131,9 @@ export default function Messages({ user, session }) {
     setSending(false)
   }
 
-  async function confirmAndDelete() {
-    const doc = confirmDelete
+  // Delete a document attachment
+  async function confirmAndDeleteDoc() {
+    const doc = confirmDelete.payload
     try {
       await supabase.storage.from('documents').remove([doc.file_path])
       await supabase.from('documents').delete().eq('id', doc.id)
@@ -136,6 +144,25 @@ export default function Messages({ user, session }) {
         author_id: user.id,
         content: `${SYSTEM_PREFIX}📄 "${doc.display_name || doc.file_name}" was deleted by ${userName}`
       })
+      setConfirmDelete(null)
+      await loadData()
+    } catch (err) {
+      alert('Delete failed: ' + err.message)
+    }
+  }
+
+  // Delete a message (and its attachments if any)
+  async function confirmAndDeleteMessage() {
+    const msg = confirmDelete.payload
+    const docs = msgDocs[msg.id] || []
+    try {
+      // Delete any attached files from storage + documents table
+      for (const doc of docs) {
+        await supabase.storage.from('documents').remove([doc.file_path])
+        await supabase.from('documents').delete().eq('id', doc.id)
+      }
+      // Delete the message itself
+      await supabase.from('messages').delete().eq('id', msg.id)
       setConfirmDelete(null)
       await loadData()
     } catch (err) {
@@ -187,15 +214,17 @@ export default function Messages({ user, session }) {
             const isMe = m.author_id === user.id
             const idx = memberIdx(m.author_id)
             const docs = msgDocs[m.id] || []
+            const isMenuOpen = activeMenu === m.id
 
             return (
-              <div key={m.id} style={{ display: 'flex', gap: 8, marginBottom: 12, flexDirection: isMe ? 'row-reverse' : 'row' }}>
+              <div key={m.id} style={{ display: 'flex', gap: 8, marginBottom: 12, flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
                 {!isMe && (
                   <div style={{ width: 28, height: 28, borderRadius: '50%', background: COLORS[idx], color: TEXT_COLORS[idx], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 500, flexShrink: 0, marginTop: 2 }}>
                     {getInitials(m.author_id)}
                   </div>
                 )}
-                <div style={{ maxWidth: '75%' }}>
+
+                <div style={{ maxWidth: '75%', position: 'relative' }}>
                   {!isMe && <div style={{ fontSize: 11, color: '#888780', marginBottom: 2 }}>{getName(m.author_id)}</div>}
 
                   {/* Text bubble */}
@@ -226,11 +255,10 @@ export default function Messages({ user, session }) {
                           </div>
                         )}
                       </div>
-
-                      {/* Delete — only for uploader */}
+                      {/* Delete attachment — only for uploader */}
                       {doc.uploaded_by === user.id && (
                         <button
-                          onClick={e => { e.stopPropagation(); setConfirmDelete(doc) }}
+                          onClick={e => { e.stopPropagation(); setConfirmDelete({ type: 'doc', payload: doc }) }}
                           style={{ position: 'absolute', top: 4, right: isMe ? 'auto' : 4, left: isMe ? 4 : 'auto', background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 10, padding: '2px 6px', cursor: 'pointer' }}>
                           🗑
                         </button>
@@ -238,8 +266,32 @@ export default function Messages({ user, session }) {
                     </div>
                   ))}
 
-                  <div style={{ fontSize: 10, color: '#b0b0ac', marginTop: 2, textAlign: isMe ? 'right' : 'left' }}>
-                    {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {/* Timestamp + delete menu for own messages */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+                    <div style={{ fontSize: 10, color: '#b0b0ac' }}>
+                      {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    {/* ⋯ menu — only for own messages */}
+                    {isMe && (
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          onClick={e => { e.stopPropagation(); setActiveMenu(isMenuOpen ? null : m.id) }}
+                          style={{ background: 'none', border: 'none', fontSize: 13, cursor: 'pointer', color: '#b0b0ac', padding: '0 2px', lineHeight: 1 }}>
+                          ⋯
+                        </button>
+                        {isMenuOpen && (
+                          <div
+                            onClick={e => e.stopPropagation()}
+                            style={{ position: 'absolute', bottom: '100%', right: 0, background: '#fff', border: '1px solid #e8e8e4', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', overflow: 'hidden', minWidth: 130, zIndex: 50 }}>
+                            <button
+                              onClick={() => { setActiveMenu(null); setConfirmDelete({ type: 'message', payload: m }) }}
+                              style={{ width: '100%', padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#A32D2D', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              🗑 Delete message
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -289,19 +341,31 @@ export default function Messages({ user, session }) {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}>
           <div style={{ background: '#fff', borderRadius: 14, padding: '1.5rem', width: '100%', maxWidth: 360, border: '1px solid #e8e8e4' }}>
             <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#2c2c2a', textAlign: 'center', marginBottom: 8 }}>Delete document?</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#2c2c2a', textAlign: 'center', marginBottom: 8 }}>
+              {confirmDelete.type === 'message' ? 'Delete message?' : 'Delete document?'}
+            </div>
             <div style={{ fontSize: 13, color: '#555', textAlign: 'center', marginBottom: 6, lineHeight: 1.5 }}>
-              The document will be removed from all locations. This action is irreversible. Go ahead?
+              {confirmDelete.type === 'message'
+                ? 'Delete message?'
+                : 'The document will be removed from all locations. This action is irreversible. Go ahead?'
+              }
             </div>
-            <div style={{ fontSize: 12, color: '#888780', textAlign: 'center', marginBottom: 20, fontStyle: 'italic' }}>
-              "{confirmDelete.display_name || confirmDelete.file_name}"
-            </div>
+            {confirmDelete.type === 'doc' && (
+              <div style={{ fontSize: 12, color: '#888780', textAlign: 'center', marginBottom: 20, fontStyle: 'italic' }}>
+                "{confirmDelete.payload.display_name || confirmDelete.payload.file_name}"
+              </div>
+            )}
+            {confirmDelete.type === 'message' && (
+              <div style={{ fontSize: 12, color: '#888780', textAlign: 'center', marginBottom: 20, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                "{confirmDelete.payload.content?.slice(0, 60) || 'Message with attachment'}"
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setConfirmDelete(null)}
                 style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #d0d0cc', background: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#2c2c2a' }}>
                 No
               </button>
-              <button onClick={confirmAndDelete}
+              <button onClick={confirmDelete.type === 'message' ? confirmAndDeleteMessage : confirmAndDeleteDoc}
                 style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: '#A32D2D', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
                 Yes, delete
               </button>
