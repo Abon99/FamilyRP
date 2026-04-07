@@ -19,9 +19,18 @@ function buildInitials(names) {
   })
 }
 
-// Consistent colour per user index
 const AVATAR_BG = ['#E6F1FB','#E1F5EE','#FAECE7','#FBEAF0','#EEEDFE','#FEF3E2','#E8F5E9']
 const AVATAR_TC = ['#0C447C','#085041','#4A1B0C','#4B1528','#26215C','#7A4500','#1B5E20']
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640)
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 640)
+    window.addEventListener('resize', h)
+    return () => window.removeEventListener('resize', h)
+  }, [])
+  return isMobile
+}
 
 export default function Calendar({ user, session }) {
   const [entries, setEntries] = useState([])
@@ -43,6 +52,7 @@ export default function Calendar({ user, session }) {
   })
 
   const today = new Date()
+  const isMobile = useIsMobile()
 
   useEffect(() => { loadEntries() }, [session])
 
@@ -72,8 +82,6 @@ export default function Calendar({ user, session }) {
     const m = members.find(m => m.user_id === id)
     return m?.users?.display_name || m?.users?.email?.split('@')[0] || '?'
   }
-
-  const memberColorIdx = (id) => members.findIndex(m => m.user_id === id) % AVATAR_BG.length
 
   function getEntryInitials(entry) {
     const participantIds = entryMembers[entry.id] || []
@@ -201,7 +209,11 @@ export default function Calendar({ user, session }) {
   const first = new Date(year, month, 1)
   const last = new Date(year, month + 1, 0)
   const startDow = (first.getDay() + 6) % 7
-  const dows = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+
+  // Desktop: full labels, Mobile: single letter
+  const dows = isMobile
+    ? ['M','T','W','T','F','S','S']
+    : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
   let cells = []
   for (let i = 0; i < startDow; i++) cells.push({ date: new Date(year, month, 1 - startDow + i), other: true })
@@ -224,9 +236,9 @@ export default function Calendar({ user, session }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
           <button onClick={() => setView('month')} style={btnStyle}>← Month</button>
           <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate() - 1))} style={btnStyle}>←</button>
-          <span style={{ fontSize: 14, fontWeight: 500, minWidth: 130, textAlign: 'center' }}>{ds}</span>
+          <span style={{ fontSize: 14, fontWeight: 500, minWidth: isMobile ? 100 : 130, textAlign: 'center' }}>{ds}</span>
           <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate() + 1))} style={btnStyle}>→</button>
-          <button onClick={() => openNewEntry(ds, 'event')} style={primaryBtnStyle}>+ Add entry</button>
+          <button onClick={() => openNewEntry(ds, 'event')} style={primaryBtnStyle}>+ Add</button>
         </div>
 
         {allDayEntries.length > 0 && (
@@ -253,7 +265,7 @@ export default function Calendar({ user, session }) {
             const slotEntries = timedEntries.filter(e => e.entry_time && e.entry_time.slice(0, 5) === slot)
             return (
               <div key={slot} style={{ display: 'flex', borderBottom: '1px solid #f0f0ee', minHeight: 32 }}>
-                <div style={{ width: 52, fontSize: 10, color: '#b0b0ac', padding: '6px 6px 0', flexShrink: 0, textAlign: 'right' }}>{slot}</div>
+                <div style={{ width: isMobile ? 42 : 52, fontSize: 10, color: '#b0b0ac', padding: '6px 4px 0', flexShrink: 0, textAlign: 'right' }}>{slot}</div>
                 <div style={{ flex: 1, padding: '3px 6px', cursor: 'pointer' }} onClick={() => openNewEntry(ds, 'event')}>
                   {slotEntries.map(e => {
                     const participantIds = entryMembers[e.id] || []
@@ -312,41 +324,111 @@ export default function Calendar({ user, session }) {
   // ── Month view ────────────────────────────────────────────
   return (
     <div onClick={() => setDayPopup(null)}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button onClick={() => setViewDate(new Date(year, month - 1, 1))} style={btnStyle}>←</button>
-          <span style={{ fontSize: 14, fontWeight: 500, minWidth: 150, textAlign: 'center' }}>{monthNames[month]} {year}</span>
+          <span style={{ fontSize: isMobile ? 13 : 14, fontWeight: 500, minWidth: isMobile ? 110 : 150, textAlign: 'center' }}>{monthNames[month]} {year}</span>
           <button onClick={() => setViewDate(new Date(year, month + 1, 1))} style={btnStyle}>→</button>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select value={filterMember} onChange={e => setFilterMember(e.target.value)} style={selectStyle}>
-            <option value="all">All members</option>
-            {members.map(m => <option key={m.user_id} value={m.user_id}>{m.users?.display_name || m.users?.email}</option>)}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <select value={filterMember} onChange={e => setFilterMember(e.target.value)}
+            style={{ ...selectStyle, fontSize: isMobile ? 11 : 12, padding: isMobile ? '4px 6px' : '6px 10px' }}>
+            <option value="all">{isMobile ? 'All' : 'All members'}</option>
+            {members.map(m => (
+              <option key={m.user_id} value={m.user_id}>
+                {isMobile
+                  ? (m.users?.display_name || m.users?.email)?.split(' ')[0]
+                  : m.users?.display_name || m.users?.email}
+              </option>
+            ))}
           </select>
-          <button onClick={() => openNewEntry(fmtDate(today))} style={primaryBtnStyle}>+ Add</button>
+          <button onClick={() => openNewEntry(fmtDate(today))} style={{ ...primaryBtnStyle, fontSize: isMobile ? 11 : 13, padding: isMobile ? '5px 10px' : '6px 14px' }}>
+            + Add
+          </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-        {[['#E6F1FB','#0C447C','Event'],['#FAEEDA','#633806','Task'],['#EAF3DE','#27500A','Done']].map(([bg,tc,label]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#888780' }}>
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: bg, border: `1px solid ${tc}` }}></div>{label}
-          </div>
-        ))}
-      </div>
+      {/* Legend — hide on mobile to save space */}
+      {!isMobile && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          {[['#E6F1FB','#0C447C','Event'],['#FAEEDA','#633806','Task'],['#EAF3DE','#27500A','Done']].map(([bg,tc,label]) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#888780' }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: bg, border: `1px solid ${tc}` }}></div>{label}
+            </div>
+          ))}
+        </div>
+      )}
 
+      {/* Mobile legend — just dots */}
+      {isMobile && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+          {[['#378ADD','Event'],['#EF9F27','Task'],['#639922','Done']].map(([c,label]) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#888780' }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: c }}></div>{label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Calendar grid */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e8e8e4', overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
-          {dows.map(d => (
-            <div key={d} style={{ textAlign: 'center', fontSize: 11, color: '#888780', padding: '6px 0', borderBottom: '1px solid #e8e8e4', fontWeight: 500 }}>{d}</div>
+
+          {/* Day headers */}
+          {dows.map((d, i) => (
+            <div key={i} style={{ textAlign: 'center', fontSize: isMobile ? 10 : 11, color: '#888780', padding: isMobile ? '5px 0' : '6px 0', borderBottom: '1px solid #e8e8e4', fontWeight: 500 }}>{d}</div>
           ))}
+
+          {/* Day cells */}
           {cells.map((cell, idx) => {
             const ds = fmtDate(cell.date)
             const isToday = ds === fmtDate(today)
             const dayEntries = entriesForDate(ds)
-            const isPopupOpen = dayPopup === ds
             const col = idx % 7
 
+            if (isMobile) {
+              // ── Mobile cell: date number + colored dots ──
+              return (
+                <div key={idx}
+                  onClick={() => { setView('day'); setViewDate(new Date(ds + 'T12:00:00')) }}
+                  style={{
+                    borderRight: col !== 6 ? '1px solid #e8e8e4' : 'none',
+                    borderBottom: '1px solid #e8e8e4',
+                    padding: '6px 2px',
+                    background: cell.other ? '#fafafa' : '#fff',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                    minHeight: 52, cursor: 'pointer'
+                  }}>
+                  {/* Day number */}
+                  <div style={{
+                    fontSize: 12, fontWeight: 500,
+                    width: 24, height: 24,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: '50%',
+                    background: isToday ? '#378ADD' : 'none',
+                    color: isToday ? '#fff' : cell.other ? '#ccc' : '#2c2c2a'
+                  }}>
+                    {cell.date.getDate()}
+                  </div>
+                  {/* Dots row — up to 3 */}
+                  {dayEntries.length > 0 && (
+                    <div style={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {dayEntries.slice(0, 3).map((e, i) => (
+                        <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor(e), flexShrink: 0 }} />
+                      ))}
+                      {dayEntries.length > 3 && (
+                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#ccc', flexShrink: 0 }} />
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            // ── Desktop cell: full pills with popup ──
+            const isPopupOpen = dayPopup === ds
             return (
               <div key={idx}
                 style={{ position: 'relative', minHeight: 80, borderRight: col !== 6 ? '1px solid #e8e8e4' : 'none', borderBottom: '1px solid #e8e8e4', padding: 4, background: cell.other ? '#fafafa' : '#fff' }}
@@ -362,7 +444,6 @@ export default function Calendar({ user, session }) {
                   const initials = buildInitials(names.length ? names : [getMemberName(e.created_by)])
                   const multi = isMultiDay(e)
                   const isStart = e.entry_date === ds
-
                   return (
                     <div key={e.id} style={{
                       fontSize: 10, padding: '2px 4px', marginBottom: 2,
@@ -373,7 +454,6 @@ export default function Calendar({ user, session }) {
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {isStart && e.entry_time ? e.entry_time.slice(0,5) + ' ' : ''}{isStart ? e.title : '↔ ' + e.title}
                       </span>
-                      {/* Show up to 3 initials as tiny dots */}
                       {initials.slice(0, 3).map((ini, i) => (
                         <span key={i} style={{ fontSize: 7, fontWeight: 700, background: 'rgba(0,0,0,0.13)', borderRadius: '50%', width: 12, height: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{ini}</span>
                       ))}
@@ -491,7 +571,6 @@ export default function Calendar({ user, session }) {
               style={inputStyle} />
           </div>
 
-          {/* Participants — avatar row */}
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Participants</label>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -502,20 +581,9 @@ export default function Calendar({ user, session }) {
                 const bg = AVATAR_BG[idx % AVATAR_BG.length]
                 const tc = AVATAR_TC[idx % AVATAR_TC.length]
                 return (
-                  <div key={m.user_id}
-                    onClick={() => toggleParticipant(m.user_id)}
-                    title={name}
+                  <div key={m.user_id} onClick={() => toggleParticipant(m.user_id)} title={name}
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: '50%',
-                      background: selected ? bg : '#f0f0ee',
-                      color: selected ? tc : '#b0b0ac',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 15, fontWeight: 700,
-                      border: selected ? `2px solid ${tc}` : '2px solid transparent',
-                      transition: 'all 0.15s',
-                      position: 'relative'
-                    }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: selected ? bg : '#f0f0ee', color: selected ? tc : '#b0b0ac', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, border: selected ? `2px solid ${tc}` : '2px solid transparent', transition: 'all 0.15s', position: 'relative' }}>
                       {initial}
                       {selected && (
                         <div style={{ position: 'absolute', bottom: -2, right: -2, width: 14, height: 14, borderRadius: '50%', background: '#378ADD', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -554,7 +622,6 @@ export default function Calendar({ user, session }) {
   }
 }
 
-// Reusable avatar row component
 function AvatarRow({ participantIds, members, size = 22, showNames = false }) {
   if (!participantIds || participantIds.length === 0) return null
   const names = participantIds.map(id => {
@@ -568,14 +635,7 @@ function AvatarRow({ participantIds, members, size = 22, showNames = false }) {
         const colorIdx = members.findIndex(m => m.user_id === id) % AVATAR_BG.length
         return (
           <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <div style={{
-              width: size, height: size, borderRadius: '50%',
-              background: AVATAR_BG[colorIdx], color: AVATAR_TC[colorIdx],
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: size * 0.4, fontWeight: 700, flexShrink: 0,
-              border: '1.5px solid rgba(255,255,255,0.8)',
-              marginLeft: i > 0 && !showNames ? -size * 0.3 : 0
-            }}>
+            <div style={{ width: size, height: size, borderRadius: '50%', background: AVATAR_BG[colorIdx], color: AVATAR_TC[colorIdx], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.4, fontWeight: 700, flexShrink: 0, border: '1.5px solid rgba(255,255,255,0.8)', marginLeft: i > 0 && !showNames ? -size * 0.3 : 0 }}>
               {initials[i] || '?'}
             </div>
             {showNames && <span style={{ fontSize: 11, color: '#888780' }}>{names[i]}</span>}
@@ -586,7 +646,7 @@ function AvatarRow({ participantIds, members, size = 22, showNames = false }) {
   )
 }
 
-const btnStyle = { background: 'none', border: '1px solid #d0d0cc', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontSize: 13 }
+const btnStyle = { background: 'none', border: '1px solid #d0d0cc', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 13 }
 const selectStyle = { padding: '6px 10px', borderRadius: 8, border: '1px solid #d0d0cc', fontSize: 12, cursor: 'pointer', background: '#fff', color: '#2c2c2a' }
 const primaryBtnStyle = { padding: '6px 14px', borderRadius: 8, border: 'none', background: '#378ADD', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }
 const popupOptionStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', fontSize: 12, color: '#2c2c2a', borderBottom: '0.5px solid #f8f8f6' }
