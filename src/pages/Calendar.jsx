@@ -44,6 +44,7 @@ export default function Calendar({ user, session }) {
   const [editEntry, setEditEntry] = useState(null)
   const [saving, setSaving] = useState(false)
   const [filterMember, setFilterMember] = useState('all')
+  const [formError, setFormError] = useState('')
   const [form, setForm] = useState({
     title: '', entry_type: 'event',
     entry_date: fmtDate(new Date()), end_date: '',
@@ -92,6 +93,7 @@ export default function Calendar({ user, session }) {
 
   function openNewEntry(date, type) {
     setEditEntry(null)
+    setFormError('')
     setForm({
       title: '', entry_type: type || 'event',
       entry_date: date || fmtDate(today), end_date: '',
@@ -104,6 +106,7 @@ export default function Calendar({ user, session }) {
 
   function openEditEntry(entry) {
     setEditEntry(entry)
+    setFormError('')
     setForm({
       title: entry.title,
       entry_type: entry.entry_type,
@@ -126,8 +129,32 @@ export default function Calendar({ user, session }) {
     }))
   }
 
+  // ── Validation ────────────────────────────────────────────
+  function validateForm() {
+    if (!form.title.trim()) return 'Please enter a title'
+
+    // End date must not be before start date
+    if (form.end_date && form.entry_date) {
+      if (form.end_date < form.entry_date) {
+        return 'End date cannot be before the start date'
+      }
+    }
+
+    // End time must not be before start time on the same day
+    if (form.end_time && form.entry_time) {
+      const sameDay = !form.end_date || form.end_date === form.entry_date
+      if (sameDay && form.end_time <= form.entry_time) {
+        return 'End time must be after the start time'
+      }
+    }
+
+    return null
+  }
+
   async function saveEntry() {
-    if (!form.title.trim()) { alert('Please enter a title'); return }
+    const error = validateForm()
+    if (error) { setFormError(error); return }
+    setFormError('')
     setSaving(true)
     const payload = {
       title: form.title, entry_type: form.entry_type,
@@ -138,12 +165,12 @@ export default function Calendar({ user, session }) {
     let entryId = editEntry?.id
     if (editEntry) {
       const { error } = await supabase.from('calendar_entries').update(payload).eq('id', editEntry.id)
-      if (error) { alert('Error: ' + error.message); setSaving(false); return }
+      if (error) { setFormError('Error: ' + error.message); setSaving(false); return }
     } else {
       const { data, error } = await supabase.from('calendar_entries')
         .insert({ ...payload, done: false, created_by: user.id, session_id: session.id })
         .select().single()
-      if (error) { alert('Error: ' + error.message); setSaving(false); return }
+      if (error) { setFormError('Error: ' + error.message); setSaving(false); return }
       entryId = data.id
     }
     await supabase.from('calendar_entry_members').delete().eq('entry_id', entryId)
@@ -209,11 +236,7 @@ export default function Calendar({ user, session }) {
   const first = new Date(year, month, 1)
   const last = new Date(year, month + 1, 0)
   const startDow = (first.getDay() + 6) % 7
-
-  // Desktop: full labels, Mobile: single letter
-  const dows = isMobile
-    ? ['M','T','W','T','F','S','S']
-    : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+  const dows = isMobile ? ['M','T','W','T','F','S','S'] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
   let cells = []
   for (let i = 0; i < startDow; i++) cells.push({ date: new Date(year, month, 1 - startDow + i), other: true })
@@ -324,8 +347,6 @@ export default function Calendar({ user, session }) {
   // ── Month view ────────────────────────────────────────────
   return (
     <div onClick={() => setDayPopup(null)}>
-
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button onClick={() => setViewDate(new Date(year, month - 1, 1))} style={btnStyle}>←</button>
@@ -338,9 +359,7 @@ export default function Calendar({ user, session }) {
             <option value="all">{isMobile ? 'All' : 'All members'}</option>
             {members.map(m => (
               <option key={m.user_id} value={m.user_id}>
-                {isMobile
-                  ? (m.users?.display_name || m.users?.email)?.split(' ')[0]
-                  : m.users?.display_name || m.users?.email}
+                {isMobile ? (m.users?.display_name || m.users?.email)?.split(' ')[0] : m.users?.display_name || m.users?.email}
               </option>
             ))}
           </select>
@@ -350,7 +369,6 @@ export default function Calendar({ user, session }) {
         </div>
       </div>
 
-      {/* Legend — hide on mobile to save space */}
       {!isMobile && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           {[['#E6F1FB','#0C447C','Event'],['#FAEEDA','#633806','Task'],['#EAF3DE','#27500A','Done']].map(([bg,tc,label]) => (
@@ -361,7 +379,6 @@ export default function Calendar({ user, session }) {
         </div>
       )}
 
-      {/* Mobile legend — just dots */}
       {isMobile && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
           {[['#378ADD','Event'],['#EF9F27','Task'],['#639922','Done']].map(([c,label]) => (
@@ -372,16 +389,12 @@ export default function Calendar({ user, session }) {
         </div>
       )}
 
-      {/* Calendar grid */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e8e8e4', overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
-
-          {/* Day headers */}
           {dows.map((d, i) => (
             <div key={i} style={{ textAlign: 'center', fontSize: isMobile ? 10 : 11, color: '#888780', padding: isMobile ? '5px 0' : '6px 0', borderBottom: '1px solid #e8e8e4', fontWeight: 500 }}>{d}</div>
           ))}
 
-          {/* Day cells */}
           {cells.map((cell, idx) => {
             const ds = fmtDate(cell.date)
             const isToday = ds === fmtDate(today)
@@ -389,45 +402,25 @@ export default function Calendar({ user, session }) {
             const col = idx % 7
 
             if (isMobile) {
-              // ── Mobile cell: date number + colored dots ──
               return (
                 <div key={idx}
                   onClick={() => { setView('day'); setViewDate(new Date(ds + 'T12:00:00')) }}
-                  style={{
-                    borderRight: col !== 6 ? '1px solid #e8e8e4' : 'none',
-                    borderBottom: '1px solid #e8e8e4',
-                    padding: '6px 2px',
-                    background: cell.other ? '#fafafa' : '#fff',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                    minHeight: 52, cursor: 'pointer'
-                  }}>
-                  {/* Day number */}
-                  <div style={{
-                    fontSize: 12, fontWeight: 500,
-                    width: 24, height: 24,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '50%',
-                    background: isToday ? '#378ADD' : 'none',
-                    color: isToday ? '#fff' : cell.other ? '#ccc' : '#2c2c2a'
-                  }}>
+                  style={{ borderRight: col !== 6 ? '1px solid #e8e8e4' : 'none', borderBottom: '1px solid #e8e8e4', padding: '6px 2px', background: cell.other ? '#fafafa' : '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minHeight: 52, cursor: 'pointer' }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: isToday ? '#378ADD' : 'none', color: isToday ? '#fff' : cell.other ? '#ccc' : '#2c2c2a' }}>
                     {cell.date.getDate()}
                   </div>
-                  {/* Dots row — up to 3 */}
                   {dayEntries.length > 0 && (
                     <div style={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
                       {dayEntries.slice(0, 3).map((e, i) => (
                         <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor(e), flexShrink: 0 }} />
                       ))}
-                      {dayEntries.length > 3 && (
-                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#ccc', flexShrink: 0 }} />
-                      )}
+                      {dayEntries.length > 3 && <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#ccc', flexShrink: 0 }} />}
                     </div>
                   )}
                 </div>
               )
             }
 
-            // ── Desktop cell: full pills with popup ──
             const isPopupOpen = dayPopup === ds
             return (
               <div key={idx}
@@ -445,12 +438,7 @@ export default function Calendar({ user, session }) {
                   const multi = isMultiDay(e)
                   const isStart = e.entry_date === ds
                   return (
-                    <div key={e.id} style={{
-                      fontSize: 10, padding: '2px 4px', marginBottom: 2,
-                      borderRadius: multi ? (isStart ? '4px 0 0 4px' : (e.end_date || e.entry_date) === ds ? '0 4px 4px 0' : 0) : 3,
-                      overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2,
-                      ...pillStyle(e)
-                    }}>
+                    <div key={e.id} style={{ fontSize: 10, padding: '2px 4px', marginBottom: 2, borderRadius: multi ? (isStart ? '4px 0 0 4px' : (e.end_date || e.entry_date) === ds ? '0 4px 4px 0' : 0) : 3, overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2, ...pillStyle(e) }}>
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {isStart && e.entry_time ? e.entry_time.slice(0,5) + ' ' : ''}{isStart ? e.title : '↔ ' + e.title}
                       </span>
@@ -502,6 +490,7 @@ export default function Calendar({ user, session }) {
   // ── Modal ─────────────────────────────────────────────────
   function modal() {
     if (!showModal) return null
+    const sameDay = !form.end_date || form.end_date === form.entry_date
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}
         onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
@@ -538,12 +527,21 @@ export default function Calendar({ user, session }) {
             <div>
               <label style={labelStyle}>Start date</label>
               <input type="date" value={form.entry_date}
-                onChange={e => setForm(p => ({ ...p, entry_date: e.target.value }))}
+                onChange={e => {
+                  const newStart = e.target.value
+                  setForm(p => ({
+                    ...p,
+                    entry_date: newStart,
+                    // Clear end date if it's now before start date
+                    end_date: p.end_date && p.end_date < newStart ? '' : p.end_date
+                  }))
+                }}
                 style={inputStyle} />
             </div>
             <div>
               <label style={labelStyle}>End date <span style={{ color: '#b0b0ac', fontSize: 10 }}>(optional)</span></label>
-              <input type="date" value={form.end_date} min={form.entry_date}
+              <input type="date" value={form.end_date}
+                min={form.entry_date}
                 onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))}
                 style={inputStyle} />
             </div>
@@ -553,12 +551,21 @@ export default function Calendar({ user, session }) {
             <div>
               <label style={labelStyle}>Start time <span style={{ color: '#b0b0ac', fontSize: 10 }}>(optional)</span></label>
               <input type="time" value={form.entry_time}
-                onChange={e => setForm(p => ({ ...p, entry_time: e.target.value }))}
+                onChange={e => {
+                  const newStart = e.target.value
+                  setForm(p => ({
+                    ...p,
+                    entry_time: newStart,
+                    // Clear end time if same day and end time is now <= start time
+                    end_time: (sameDay && p.end_time && p.end_time <= newStart) ? '' : p.end_time
+                  }))
+                }}
                 style={inputStyle} />
             </div>
             <div>
               <label style={labelStyle}>End time <span style={{ color: '#b0b0ac', fontSize: 10 }}>(optional)</span></label>
               <input type="time" value={form.end_time}
+                min={sameDay && form.entry_time ? form.entry_time : undefined}
                 onChange={e => setForm(p => ({ ...p, end_time: e.target.value }))}
                 style={inputStyle} />
             </div>
@@ -600,6 +607,13 @@ export default function Calendar({ user, session }) {
             </div>
           </div>
 
+          {/* Validation error */}
+          {formError && (
+            <div style={{ background: '#FCEBEB', border: '1px solid #f5c2c2', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#A32D2D' }}>
+              ⚠️ {formError}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             {editEntry && (
               <button onClick={() => deleteEntry(editEntry.id)}
@@ -607,7 +621,7 @@ export default function Calendar({ user, session }) {
                 Delete
               </button>
             )}
-            <button onClick={() => { setShowModal(false); setEditEntry(null) }}
+            <button onClick={() => { setShowModal(false); setEditEntry(null); setFormError('') }}
               style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid #d0d0cc', background: 'none', cursor: 'pointer', fontSize: 13 }}>
               Cancel
             </button>

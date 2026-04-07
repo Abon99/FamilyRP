@@ -11,6 +11,16 @@ function getSystemText(content) {
   return content?.slice(SYSTEM_PREFIX.length) || ''
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640)
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 640)
+    window.addEventListener('resize', h)
+    return () => window.removeEventListener('resize', h)
+  }, [])
+  return isMobile
+}
+
 export default function Messages({ user, session }) {
   const [messages, setMessages] = useState([])
   const [members, setMembers] = useState([])
@@ -20,15 +30,15 @@ export default function Messages({ user, session }) {
   const [sending, setSending] = useState(false)
   const [attachFile, setAttachFile] = useState(null)
   const [attachPreview, setAttachPreview] = useState(null)
-  const [confirmDelete, setConfirmDelete] = useState(null) // { type: 'doc'|'message', payload }
-  const [activeMenu, setActiveMenu] = useState(null) // message id with menu open
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [activeMenu, setActiveMenu] = useState(null)
   const bottomRef = useRef(null)
   const fileRef = useRef(null)
+  const isMobile = useIsMobile()
 
   useEffect(() => { loadData() }, [session])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  // Close menu on outside click
   useEffect(() => {
     function handleClick() { setActiveMenu(null) }
     document.addEventListener('click', handleClick)
@@ -131,7 +141,6 @@ export default function Messages({ user, session }) {
     setSending(false)
   }
 
-  // Delete a document attachment
   async function confirmAndDeleteDoc() {
     const doc = confirmDelete.payload
     try {
@@ -151,17 +160,14 @@ export default function Messages({ user, session }) {
     }
   }
 
-  // Delete a message (and its attachments if any)
   async function confirmAndDeleteMessage() {
     const msg = confirmDelete.payload
     const docs = msgDocs[msg.id] || []
     try {
-      // Delete any attached files from storage + documents table
       for (const doc of docs) {
         await supabase.storage.from('documents').remove([doc.file_path])
         await supabase.from('documents').delete().eq('id', doc.id)
       }
-      // Delete the message itself
       await supabase.from('messages').delete().eq('id', msg.id)
       setConfirmDelete(null)
       await loadData()
@@ -186,10 +192,15 @@ export default function Messages({ user, session }) {
   const memberIdx = (id) => members.findIndex(m => m.user_id === id) % COLORS.length
   const isImageDoc = (doc) => doc.file_type?.startsWith('image/')
 
+  // On mobile the bottom tab bar is 60px — subtract that from height
+  const containerHeight = isMobile
+    ? 'calc(100vh - 140px - 60px)'
+    : 'calc(100vh - 140px)'
+
   if (loading) return <div style={{ padding: '2rem', color: '#888780', textAlign: 'center' }}>Loading...</div>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: containerHeight }}>
       <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 12 }}>General board</div>
 
       {/* Message list */}
@@ -200,7 +211,6 @@ export default function Messages({ user, session }) {
           </div>
         ) : (
           messages.map(m => {
-            // System message
             if (isSystemMessage(m.content)) {
               return (
                 <div key={m.id} style={{ textAlign: 'center', margin: '8px 0' }}>
@@ -227,14 +237,12 @@ export default function Messages({ user, session }) {
                 <div style={{ maxWidth: '75%', position: 'relative' }}>
                   {!isMe && <div style={{ fontSize: 11, color: '#888780', marginBottom: 2 }}>{getName(m.author_id)}</div>}
 
-                  {/* Text bubble */}
                   {m.content && (
                     <div style={{ padding: '8px 12px', borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px', background: isMe ? '#378ADD' : '#fff', color: isMe ? '#fff' : '#2c2c2a', fontSize: 13, border: isMe ? 'none' : '1px solid #e8e8e4', lineHeight: 1.5, marginBottom: docs.length ? 4 : 0 }}>
                       {m.content}
                     </div>
                   )}
 
-                  {/* Attachments */}
                   {docs.map(doc => (
                     <div key={doc.id} style={{ marginTop: 4, position: 'relative' }}>
                       <div onClick={() => openDoc(doc)}
@@ -255,7 +263,6 @@ export default function Messages({ user, session }) {
                           </div>
                         )}
                       </div>
-                      {/* Delete attachment — only for uploader */}
                       {doc.uploaded_by === user.id && (
                         <button
                           onClick={e => { e.stopPropagation(); setConfirmDelete({ type: 'doc', payload: doc }) }}
@@ -266,12 +273,10 @@ export default function Messages({ user, session }) {
                     </div>
                   ))}
 
-                  {/* Timestamp + delete menu for own messages */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
                     <div style={{ fontSize: 10, color: '#b0b0ac' }}>
                       {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
-                    {/* ⋯ menu — only for own messages */}
                     {isMe && (
                       <div style={{ position: 'relative' }}>
                         <button
@@ -280,8 +285,7 @@ export default function Messages({ user, session }) {
                           ⋯
                         </button>
                         {isMenuOpen && (
-                          <div
-                            onClick={e => e.stopPropagation()}
+                          <div onClick={e => e.stopPropagation()}
                             style={{ position: 'absolute', bottom: '100%', right: 0, background: '#fff', border: '1px solid #e8e8e4', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', overflow: 'hidden', minWidth: 130, zIndex: 50 }}>
                             <button
                               onClick={() => { setActiveMenu(null); setConfirmDelete({ type: 'message', payload: m }) }}
