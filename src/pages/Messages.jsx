@@ -346,7 +346,7 @@ export default function Messages({ user, session }) {
             </div>
             <div style={{ fontSize: 13, color: '#555', textAlign: 'center', marginBottom: 6, lineHeight: 1.5 }}>
               {confirmDelete.type === 'message'
-                ? 'Delete message?'
+                ? 'This message will be deleted?'
                 : 'The document will be removed from all locations. This action is irreversible. Go ahead?'
               }
             </div>
