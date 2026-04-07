@@ -18,72 +18,6 @@ const MODE_COLORS = { family: '#FAEEDA', group: '#EAF3DE', team: '#E6F1FB' }
 const MODE_TEXT   = { family: '#633806', group: '#27500A', team: '#0C447C' }
 const MODE_ICONS  = { family: '👨‍👩‍👧‍👦', group: '👥', team: '💼' }
 
-const SHARE_OPTIONS = [
-  {
-    id: 'native',
-    label: 'Share',
-    icon: '📲',
-    color: '#378ADD',
-    bg: '#E6F1FB',
-    action: (link, text) => {
-      if (navigator.share) {
-        navigator.share({ title: 'Join my Family App session', text, url: link })
-      }
-    },
-    available: () => !!navigator.share
-  },
-  {
-    id: 'whatsapp',
-    label: 'WhatsApp',
-    icon: '💬',
-    color: '#25D366',
-    bg: '#E8FBF0',
-    action: (link, text) => window.open(`https://wa.me/?text=${encodeURIComponent(text + ' ' + link)}`, '_blank')
-  },
-  {
-    id: 'messenger',
-    label: 'Messenger',
-    icon: '💙',
-    color: '#0084FF',
-    bg: '#E6F3FF',
-    action: (link) => window.open(`fb-messenger://share/?link=${encodeURIComponent(link)}`, '_blank')
-  },
-  {
-    id: 'telegram',
-    label: 'Telegram',
-    icon: '✈️',
-    color: '#26A5E4',
-    bg: '#E6F6FD',
-    action: (link, text) => window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank')
-  },
-  {
-    id: 'signal',
-    label: 'Signal',
-    icon: '🔵',
-    color: '#3A76F0',
-    bg: '#EAF0FF',
-    action: (link, text) => window.open(`https://signal.me/#p/${encodeURIComponent(text + ' ' + link)}`, '_blank')
-  },
-  {
-    id: 'snapchat',
-    label: 'Snapchat',
-    icon: '👻',
-    color: '#FFFC00',
-    bg: '#FFFDE6',
-    action: (link) => window.open(`https://www.snapchat.com/scan?attachmentUrl=${encodeURIComponent(link)}`, '_blank')
-  },
-  {
-    id: 'copy',
-    label: 'Copy link',
-    icon: '📋',
-    color: '#888780',
-    bg: '#f4f4f2',
-    action: (link) => {
-      navigator.clipboard?.writeText(link)
-    }
-  },
-]
-
 export default function Layout({ user, session, userRole, activeTab, setActiveTab, onSwitchSession, children }) {
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
   const [allSessions, setAllSessions] = useState([])
@@ -111,27 +45,31 @@ export default function Layout({ user, session, userRole, activeTab, setActiveTa
     } catch (e) { console.error(e) }
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut()
-  }
-
   function handleSessionSwitch(sess, role) {
     setSessionMenuOpen(false)
     onSwitchSession(sess, role)
   }
 
   const inviteLink = `https://abon99.github.io/FamilyRP?invite=${session?.invite_code}`
-  const inviteText = `Join my "${session?.name}" session on Family App! Use this link to join:`
+  const inviteText = `Join my "${session?.name}" session on Family App!`
 
-  function handleShare(option) {
-    if (option.id === 'copy') {
-      navigator.clipboard?.writeText(inviteLink)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-      return
+  function handleNativeShare() {
+    if (navigator.share) {
+      navigator.share({
+        title: 'Join my Family App session',
+        text: inviteText,
+        url: inviteLink
+      })
     }
-    option.action(inviteLink, inviteText)
   }
+
+  function handleCopy() {
+    navigator.clipboard?.writeText(inviteLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const canShare = !!navigator.share
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", minHeight: '100vh', background: '#f8f8f6' }}>
@@ -232,15 +170,15 @@ export default function Layout({ user, session, userRole, activeTab, setActiveTa
 
       {/* Invite popup */}
       {inviteOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200, padding: '0' }}
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200 }}
           onClick={e => { if (e.target === e.currentTarget) setInviteOpen(false) }}>
-          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '20px 20px 32px' }}>
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '20px 20px 36px' }}>
 
             {/* Handle bar */}
             <div style={{ width: 36, height: 4, borderRadius: 2, background: '#e0e0dc', margin: '0 auto 18px' }}></div>
 
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#2c2c2a' }}>Invite someone</div>
                 <div style={{ fontSize: 12, color: '#888780', marginTop: 2 }}>to <strong>{session?.name}</strong></div>
@@ -250,28 +188,33 @@ export default function Layout({ user, session, userRole, activeTab, setActiveTa
             </div>
 
             {/* Invite link preview */}
-            <div style={{ background: '#f4f4f2', borderRadius: 10, padding: '10px 12px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ flex: 1, fontSize: 11, color: '#888780', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+            <div style={{ background: '#f4f4f2', borderRadius: 10, padding: '10px 12px', marginBottom: 20 }}>
+              <div style={{ fontSize: 10, color: '#b0b0ac', marginBottom: 3 }}>Invite link</div>
+              <div style={{ fontSize: 11, color: '#888780', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
                 {inviteLink}
               </div>
             </div>
 
-            {/* Share options grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 8 }}>
-              {SHARE_OPTIONS.filter(o => o.id !== 'native' || o.available?.()).map(option => (
-                <button key={option.id}
-                  onClick={() => handleShare(option)}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 6px', borderRadius: 12, border: '1px solid #e8e8e4', background: option.id === 'copy' && copied ? '#EAF3DE' : option.bg, cursor: 'pointer', transition: 'all 0.15s' }}>
-                  <span style={{ fontSize: 24 }}>{option.id === 'copy' && copied ? '✅' : option.icon}</span>
-                  <span style={{ fontSize: 10, fontWeight: 500, color: option.id === 'copy' && copied ? '#27500A' : option.color, textAlign: 'center' }}>
-                    {option.id === 'copy' && copied ? 'Copied!' : option.label}
-                  </span>
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              {/* Native share — shown on mobile */}
+              {canShare && (
+                <button onClick={handleNativeShare}
+                  style={{ flex: 1, padding: '14px', borderRadius: 12, border: 'none', background: '#378ADD', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 20 }}>📲</span> Share
                 </button>
-              ))}
+              )}
+
+              {/* Copy link */}
+              <button onClick={handleCopy}
+                style={{ flex: 1, padding: '14px', borderRadius: 12, border: '1px solid #e8e8e4', background: copied ? '#EAF3DE' : '#f8f8f6', color: copied ? '#27500A' : '#2c2c2a', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.2s' }}>
+                <span style={{ fontSize: 20 }}>{copied ? '✅' : '📋'}</span>
+                {copied ? 'Copied!' : 'Copy link'}
+              </button>
             </div>
 
             {/* Invite code fallback */}
-            <div style={{ textAlign: 'center', marginTop: 14 }}>
+            <div style={{ textAlign: 'center', marginTop: 16 }}>
               <span style={{ fontSize: 11, color: '#b0b0ac' }}>Or share the code manually: </span>
               <span style={{ fontSize: 12, fontWeight: 600, color: '#2c2c2a', fontFamily: 'monospace', background: '#f4f4f2', padding: '2px 8px', borderRadius: 6 }}>{session?.invite_code}</span>
             </div>
