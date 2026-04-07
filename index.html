@@ -2,12 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>family-app</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Family App</title>
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/FamilyRP/manifest.json" />
+
+    <!-- Theme colour (top bar on Android) -->
+    <meta name="theme-color" content="#378ADD" />
+
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Family App" />
+    <link rel="apple-touch-icon" href="/FamilyRP/icons/apple-touch-icon.png" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/FamilyRP/icons/icon-192.png" />
+
+    <!-- Prevent zoom on input focus (iOS) -->
+    <style>
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Register service worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/FamilyRP/sw.js')
+            .then(reg => console.log('SW registered:', reg.scope))
+            .catch(err => console.log('SW failed:', err))
+        })
+      }
+    </script>
   </body>
 </html>
