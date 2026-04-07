@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
+const SYSTEM_PREFIX = '__system__:'
+
 const DOC_CATEGORIES = [
   { value: 'document',   label: 'Document',        icon: '📄' },
   { value: 'receipt',    label: 'Receipt',          icon: '🧾' },
@@ -41,11 +43,12 @@ export default function Documents({ user, session }) {
   const [docs, setDocs] = useState([])
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState('month') // 'user' | 'month' | 'type'
-  const [userSortBy, setUserSortBy] = useState('date') // 'date' | 'type'
+  const [viewMode, setViewMode] = useState('month')
+  const [userSortBy, setUserSortBy] = useState('date')
   const [monthSubUser, setMonthSubUser] = useState(false)
   const [expanded, setExpanded] = useState({})
   const [selectedDoc, setSelectedDoc] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const [showUpload, setShowUpload] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadForm, setUploadForm] = useState({
@@ -71,8 +74,6 @@ export default function Documents({ user, session }) {
     ])
     setDocs(d || [])
     setMembers(m || [])
-
-    // Auto-expand current month
     const currentMonth = new Date().toISOString().slice(0, 7)
     setExpanded({ [currentMonth]: true })
     setLoading(false)
@@ -87,7 +88,6 @@ export default function Documents({ user, session }) {
     setExpanded(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  // ── Upload ──────────────────────────────────────────────
   function openUpload() {
     setUploadFile(null)
     setUploadForm({ display_name: '', doc_category: 'document', notes: '' })
@@ -103,7 +103,6 @@ export default function Documents({ user, session }) {
       const { error: storageError } = await supabase.storage
         .from('documents')
         .upload(path, uploadFile, { upsert: false })
-
       if (storageError) throw storageError
 
       const { error: dbError } = await supabase.from('documents').insert({
@@ -118,7 +117,6 @@ export default function Documents({ user, session }) {
         display_name: uploadForm.display_name || uploadFile.name,
         notes: uploadForm.notes || null,
       })
-
       if (dbError) throw dbError
       setShowUpload(false)
       await loadData()
@@ -135,15 +133,31 @@ export default function Documents({ user, session }) {
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
-  async function deleteDoc(doc) {
-    if (!confirm(`Delete "${doc.display_name || doc.file_name}"?`)) return
-    await supabase.storage.from('documents').remove([doc.file_path])
-    await supabase.from('documents').delete().eq('id', doc.id)
-    setSelectedDoc(null)
-    await loadData()
+  async function confirmAndDelete() {
+    const doc = confirmDelete
+    try {
+      await supabase.storage.from('documents').remove([doc.file_path])
+      await supabase.from('documents').delete().eq('id', doc.id)
+
+      // If doc came from a message, post system message in chat
+      if (doc.message_id) {
+        const userName = getMemberName(user.id)
+        await supabase.from('messages').insert({
+          session_id: session.id,
+          board: 'general',
+          author_id: user.id,
+          content: `${SYSTEM_PREFIX}📄 "${doc.display_name || doc.file_name}" was deleted by ${userName}`
+        })
+      }
+
+      setConfirmDelete(null)
+      setSelectedDoc(null)
+      await loadData()
+    } catch (err) {
+      alert('Delete failed: ' + err.message)
+    }
   }
 
-  // ── Grouping helpers ────────────────────────────────────
   function groupBy(arr, keyFn) {
     const map = {}
     arr.forEach(item => {
@@ -159,17 +173,12 @@ export default function Documents({ user, session }) {
     return [...arr].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   }
 
-  // ── Render a single doc row ─────────────────────────────
   function DocRow({ doc }) {
     const cat = getCategoryMeta(doc.doc_category)
     return (
       <div
         onClick={() => setSelectedDoc(doc)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 14px', background: '#fff',
-          borderTop: '1px solid #f0f0ee', cursor: 'pointer'
-        }}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fff', borderTop: '1px solid #f0f0ee', cursor: 'pointer' }}
         onMouseEnter={e => e.currentTarget.style.background = '#f8f8f6'}
         onMouseLeave={e => e.currentTarget.style.background = '#fff'}
       >
@@ -188,19 +197,12 @@ export default function Documents({ user, session }) {
     )
   }
 
-  // ── Section header (collapsible) ────────────────────────
-  function SectionHeader({ label, count, groupKey, isFirst }) {
+  function SectionHeader({ label, count, groupKey }) {
     const isOpen = expanded[groupKey] ?? false
     return (
       <button
         onClick={() => toggleExpand(groupKey)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: '#f4f4f2', border: '1px solid #e8e8e4',
-          borderRadius: isFirst ? '10px 10px 0 0' : 0,
-          padding: '9px 14px', cursor: 'pointer', textAlign: 'left',
-          borderTop: isFirst ? '1px solid #e8e8e4' : 'none'
-        }}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f4f4f2', border: '1px solid #e8e8e4', borderRadius: isOpen ? '10px 10px 0 0' : 10, padding: '9px 14px', cursor: 'pointer', textAlign: 'left' }}
       >
         <span style={{ fontSize: 13, fontWeight: 600, color: '#2c2c2a' }}>{label}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -211,20 +213,14 @@ export default function Documents({ user, session }) {
     )
   }
 
-  // ── View renderers ──────────────────────────────────────
   function renderByUser() {
     const byUser = groupBy(docs, d => d.uploaded_by)
-    return Object.entries(byUser).map(([userId, userDocs], idx) => {
+    return Object.entries(byUser).map(([userId, userDocs]) => {
       const isOpen = expanded[`user_${userId}`] ?? false
       const sorted = sortedDocs(userDocs, userSortBy)
       return (
         <div key={userId} style={{ marginBottom: 10 }}>
-          <SectionHeader
-            label={getMemberName(userId)}
-            count={userDocs.length}
-            groupKey={`user_${userId}`}
-            isFirst={true}
-          />
+          <SectionHeader label={getMemberName(userId)} count={userDocs.length} groupKey={`user_${userId}`} />
           {isOpen && (
             <div style={{ border: '1px solid #e8e8e4', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
               {sorted.map(doc => <DocRow key={doc.id} doc={doc} />)}
@@ -242,12 +238,7 @@ export default function Documents({ user, session }) {
       const isOpen = expanded[month] ?? false
       return (
         <div key={month} style={{ marginBottom: 10 }}>
-          <SectionHeader
-            label={formatMonthLabel(month)}
-            count={monthDocs.length}
-            groupKey={month}
-            isFirst={true}
-          />
+          <SectionHeader label={formatMonthLabel(month)} count={monthDocs.length} groupKey={month} />
           {isOpen && (
             <div style={{ border: '1px solid #e8e8e4', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
               {monthSubUser
@@ -277,18 +268,11 @@ export default function Documents({ user, session }) {
     return types.map(([type, typeDocs]) => {
       const cat = getCategoryMeta(type)
       const isOpen = expanded[`type_${type}`] ?? false
-      const sorted = sortedDocs(typeDocs, 'date')
       return (
         <div key={type} style={{ marginBottom: 10 }}>
           <button
             onClick={() => toggleExpand(`type_${type}`)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: '#f4f4f2', border: '1px solid #e8e8e4',
-              borderRadius: isOpen ? '10px 10px 0 0' : 10,
-              padding: '9px 14px', cursor: 'pointer', textAlign: 'left'
-            }}
-          >
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f4f4f2', border: '1px solid #e8e8e4', borderRadius: isOpen ? '10px 10px 0 0' : 10, padding: '9px 14px', cursor: 'pointer', textAlign: 'left' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 18 }}>{cat.icon}</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: '#2c2c2a' }}>{cat.label}</span>
@@ -300,7 +284,7 @@ export default function Documents({ user, session }) {
           </button>
           {isOpen && (
             <div style={{ border: '1px solid #e8e8e4', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
-              {sorted.map(doc => <DocRow key={doc.id} doc={doc} />)}
+              {sortedDocs(typeDocs, 'date').map(doc => <DocRow key={doc.id} doc={doc} />)}
             </div>
           )}
         </div>
@@ -336,13 +320,7 @@ export default function Documents({ user, session }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, background: '#f4f4f2', borderRadius: 10, padding: 4 }}>
         {[['month', '📅 By Month'], ['user', '👤 By User'], ['type', '🗂️ By Type']].map(([mode, label]) => (
           <button key={mode} onClick={() => setViewMode(mode)}
-            style={{
-              flex: 1, padding: '7px 4px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 500,
-              cursor: 'pointer', transition: 'all 0.15s',
-              background: viewMode === mode ? '#fff' : 'transparent',
-              color: viewMode === mode ? '#2c2c2a' : '#888780',
-              boxShadow: viewMode === mode ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
-            }}>
+            style={{ flex: 1, padding: '7px 4px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: viewMode === mode ? '#fff' : 'transparent', color: viewMode === mode ? '#2c2c2a' : '#888780', boxShadow: viewMode === mode ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
             {label}
           </button>
         ))}
@@ -354,10 +332,7 @@ export default function Documents({ user, session }) {
           <span style={{ fontSize: 12, color: '#888780' }}>Sort by:</span>
           {[['date', 'Date'], ['type', 'Type']].map(([val, lbl]) => (
             <button key={val} onClick={() => setUserSortBy(val)}
-              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid', fontSize: 12, cursor: 'pointer',
-                borderColor: userSortBy === val ? '#378ADD' : '#d0d0cc',
-                background: userSortBy === val ? '#EBF4FF' : '#fff',
-                color: userSortBy === val ? '#378ADD' : '#888780', fontWeight: userSortBy === val ? 500 : 400 }}>
+              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid', fontSize: 12, cursor: 'pointer', borderColor: userSortBy === val ? '#378ADD' : '#d0d0cc', background: userSortBy === val ? '#EBF4FF' : '#fff', color: userSortBy === val ? '#378ADD' : '#888780', fontWeight: userSortBy === val ? 500 : 400 }}>
               {lbl}
             </button>
           ))}
@@ -365,12 +340,9 @@ export default function Documents({ user, session }) {
       )}
 
       {viewMode === 'month' && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <button onClick={() => setMonthSubUser(v => !v)}
-            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid', fontSize: 12, cursor: 'pointer',
-              borderColor: monthSubUser ? '#378ADD' : '#d0d0cc',
-              background: monthSubUser ? '#EBF4FF' : '#fff',
-              color: monthSubUser ? '#378ADD' : '#888780', fontWeight: monthSubUser ? 500 : 400 }}>
+            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid', fontSize: 12, cursor: 'pointer', borderColor: monthSubUser ? '#378ADD' : '#d0d0cc', background: monthSubUser ? '#EBF4FF' : '#fff', color: monthSubUser ? '#378ADD' : '#888780', fontWeight: monthSubUser ? 500 : 400 }}>
             {monthSubUser ? '✓ ' : ''}Group by user
           </button>
         </div>
@@ -390,7 +362,7 @@ export default function Documents({ user, session }) {
         </>
       )}
 
-      {/* ── Detail modal ── */}
+      {/* Detail modal */}
       {selectedDoc && (
         <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) setSelectedDoc(null) }}>
           <div style={modalStyle}>
@@ -425,7 +397,7 @@ export default function Documents({ user, session }) {
                 style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: '#378ADD', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
                 📂 Open file
               </button>
-              <button onClick={() => deleteDoc(selectedDoc)}
+              <button onClick={() => { setConfirmDelete(selectedDoc); setSelectedDoc(null) }}
                 style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: '#FCEBEB', color: '#A32D2D', cursor: 'pointer', fontSize: 13 }}>
                 🗑 Delete
               </button>
@@ -434,7 +406,33 @@ export default function Documents({ user, session }) {
         </div>
       )}
 
-      {/* ── Upload modal ── */}
+      {/* Confirm delete popup */}
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '1.5rem', width: '100%', maxWidth: 360, border: '1px solid #e8e8e4' }}>
+            <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#2c2c2a', textAlign: 'center', marginBottom: 8 }}>Delete document?</div>
+            <div style={{ fontSize: 13, color: '#555', textAlign: 'center', marginBottom: 6, lineHeight: 1.5 }}>
+              The document will be removed from all locations. This action is irreversible. Go ahead?
+            </div>
+            <div style={{ fontSize: 12, color: '#888780', textAlign: 'center', marginBottom: 20, fontStyle: 'italic' }}>
+              "{confirmDelete.display_name || confirmDelete.file_name}"
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setConfirmDelete(null)}
+                style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #d0d0cc', background: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#2c2c2a' }}>
+                No
+              </button>
+              <button onClick={confirmAndDelete}
+                style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: '#A32D2D', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                Yes, delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload modal */}
       {showUpload && (
         <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) setShowUpload(false) }}>
           <div style={{ ...modalStyle, maxWidth: 440 }}>
@@ -444,9 +442,7 @@ export default function Documents({ user, session }) {
                 style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
             </div>
 
-            {/* File picker */}
-            <div
-              onClick={() => fileRef.current?.click()}
+            <div onClick={() => fileRef.current?.click()}
               style={{ border: '2px dashed #d0d0cc', borderRadius: 10, padding: '20px', textAlign: 'center', cursor: 'pointer', marginBottom: 14, background: uploadFile ? '#EAF3DE' : '#f8f8f6' }}>
               {uploadFile ? (
                 <>
@@ -465,7 +461,6 @@ export default function Documents({ user, session }) {
             <input ref={fileRef} type="file" style={{ display: 'none' }}
               onChange={e => setUploadFile(e.target.files?.[0] || null)} />
 
-            {/* Category */}
             <div style={{ marginBottom: 10 }}>
               <label style={labelStyle}>Category</label>
               <select value={uploadForm.doc_category}
@@ -477,7 +472,6 @@ export default function Documents({ user, session }) {
               </select>
             </div>
 
-            {/* Display name */}
             <div style={{ marginBottom: 10 }}>
               <label style={labelStyle}>Display name <span style={{ color: '#b0b0ac' }}>(optional)</span></label>
               <input type="text" value={uploadForm.display_name} placeholder={uploadFile?.name || 'e.g. Home insurance 2026'}
@@ -485,7 +479,6 @@ export default function Documents({ user, session }) {
                 style={inputStyle} />
             </div>
 
-            {/* Notes */}
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Notes <span style={{ color: '#b0b0ac' }}>(optional)</span></label>
               <textarea value={uploadForm.notes} placeholder="Any notes about this document..."

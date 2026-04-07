@@ -76,7 +76,7 @@ export default function App() {
       case 'messages':   return <Messages key={currentSession?.id} {...props} />
       case 'documents':  return <Documents key={currentSession?.id} {...props} />
       case 'reports':    return <Reports key={currentSession?.id} {...props} />
-      case 'offers':     return <Offers {...props} />
+      case 'offers':     return <Offers key={currentSession?.id} {...props} />
       default:           return <ComingSoon name={activeTab} />
     }
   }
