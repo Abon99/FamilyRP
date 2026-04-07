@@ -85,7 +85,7 @@ export default function SessionPicker({ user, onSelect, onCreateNew }) {
                 </div>
                 {isIOS() ? (
                   <div style={{ fontSize: 11, color: '#888780', lineHeight: 1.5 }}>
-                    Tap <strong>Share</strong> <span style={{ fontSize: 13 }}>⎋</span> at the bottom of Safari, then <strong>"Add to Home Screen"</strong>
+                   Tap the <strong>Share icon</strong> <span style={{ fontSize: 13 }}>⬆️</span> in the Safari toolbar (box with arrow), then scroll down and tap <strong>"Add to Home Screen"</strong>
                   </div>
                 ) : (
                   <div style={{ fontSize: 11, color: '#888780', lineHeight: 1.5 }}>
